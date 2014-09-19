@@ -36,7 +36,6 @@ class Http {
      * Use the send method to call every endpoint except for oauth/tokens
      */
     public static function send($client, $endPoint, $json = null, $method = 'GET', $contentType = 'application/json') {
-
         $url = $client->getApiUrl().$endPoint;
         $method = strtoupper($method);
         $json = ($json == null ? (object) null : (($method != 'GET') && ($method != 'DELETE') && ($contentType == 'application/json') ? json_encode($json) : $json));
@@ -78,9 +77,15 @@ class Http {
         curl_setopt($curl, CURLOPT_VERBOSE, true);
         curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($curl, CURLOPT_MAXREDIRS, 3);
-        $response = curl_exec($curl);
+
+        $tryCount = 0;
+        do {
+            if ($tryCount > 0) { echo "Retrying..."; }
+            $response = curl_exec($curl);
+        } while ($tryCount < 5 && !$response);
+
         if ($response === false) {
-            throw new \Exception('No response from curl_exec in '.__METHOD__);
+            throw new \Exception('No response from curl_exec in '.__METHOD__ . ': ' . curl_error($curl));
         }
         $headerSize = curl_getinfo($curl, CURLINFO_HEADER_SIZE);
         $responseBody = substr($response, $headerSize);
