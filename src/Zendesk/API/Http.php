@@ -4,13 +4,20 @@ namespace Zendesk\API;
 
 /**
  * HTTP functions via curl
+ * @package Zendesk\API
  */
 class Http {
 
-    /*
+    /**
      * Prepares an endpoint URL with optional side-loading
+     *
+     * @param string $endPoint
+     * @param array  $sideload
+     * @param array  $iterators
+     *
+     * @return string
      */
-    public static function prepare($endPoint, $sideload = null, $iterators = null) {
+    public static function prepare($endPoint, array $sideload = null, array $iterators = null) {
         $addParams = array();
         // First look for side-loaded variables
         if(is_array($sideload)) {
@@ -32,41 +39,66 @@ class Http {
         }
     }
 
-    /*
+    /**
      * Use the send method to call every endpoint except for oauth/tokens
+     *
+     * @param Client $client
+     * @param string $endPoint
+     * @param mixed  $json
+     * @param string $method
+     * @param string $contentType
+     *
+     * @throws \Exception
+     *
+     * @return mixed
      */
-    public static function send($client, $endPoint, $json = null, $method = 'GET', $contentType = 'application/json') {
-        $url = $client->getApiUrl().$endPoint;
-        $method = strtoupper($method);
-        $json = ($json == null ? (object) null : (($method != 'GET') && ($method != 'DELETE') && ($contentType == 'application/json') ? json_encode($json) : $json));
+    public static function send(Client $client, $endPoint, $json = null, $method = 'GET', $contentType = 'application/json') {
 
-        if($method == 'POST') {
+        $url    = $client->getApiUrl() . $endPoint;
+        $method = strtoupper($method);
+        if (null == $json) {
+            $json = new \stdClass();
+        } else if ($contentType == 'application/json' && $method != 'GET' && $method != 'DELETE') {
+            $json = json_encode($json);
+        }
+
+        if ($method == 'POST') {
             $curl = curl_init($url);
             curl_setopt($curl, CURLOPT_POST, true);
             curl_setopt($curl, CURLOPT_POSTFIELDS, $json);
-            if(is_array($json) && isset($json['filename'])) {
-							$file = fopen($json['filename'], 'r');
-							$size = filesize($json['filename']);
-							$filedata = fread($file, $size);
-							curl_setopt($curl, CURLOPT_POSTFIELDS, $filedata);
-							curl_setopt($curl, CURLOPT_INFILE, $file);
-							curl_setopt($curl, CURLOPT_INFILESIZE, $size);
-							curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-type: application/binary'));
-						}
-        } else
-        if($method == 'PUT') {
+            if (is_array($json) && (isset($json['filename']) || isset($json['uploaded_data']))) {
+                $filename = isset($json['filename']) ? $json['filename'] : $json['uploaded_data'];
+                $file     = fopen($filename, 'r');
+                $size     = filesize($filename);
+                $fileData = fread($file, $size);
+                curl_setopt($curl, CURLOPT_POSTFIELDS, $fileData);
+                curl_setopt($curl, CURLOPT_INFILE, $file);
+                curl_setopt($curl, CURLOPT_INFILESIZE, $size);
+                curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-type: application/binary'));
+            }
+        } else if ($method == 'PUT') {
             $curl = curl_init($url);
             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'PUT');
             curl_setopt($curl, CURLOPT_POSTFIELDS, $json);
         } else {
-            $curl = curl_init($url.($json != (object) null ? (strpos($url, '?') === false ? '?' : '&').http_build_query($json) : ''));
+            $curl = curl_init(
+                $url . ($json != (object)null ? (strpos($url, '?') === false ? '?' : '&') . http_build_query($json) : '')
+            );
             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, ($method ? $method : 'GET'));
         }
-        if($client->getAuthType() == 'oauth_token') {
-            curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-Type: '.$contentType, 'Accept: application/json', 'Authorization: Bearer '.$client->getAuthText()));
+        if ($client->getAuthType() == 'oauth_token') {
+            curl_setopt(
+                $curl,
+                CURLOPT_HTTPHEADER,
+                array(
+                    'Content-Type: ' . $contentType,
+                    'Accept: application/json',
+                    'Authorization: Bearer ' . $client->getAuthText()
+                )
+            );
         } else {
             curl_setopt($curl, CURLOPT_USERPWD, $client->getAuthText());
-            curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-Type: '.$contentType, 'Accept: application/json'));
+            curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-Type: ' . $contentType, 'Accept: application/json'));
         }
         curl_setopt($curl, CURLINFO_HEADER_OUT, true);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
@@ -87,7 +119,7 @@ class Http {
         if ($response === false) {
             throw new \Exception('No response from curl_exec in '.__METHOD__ . ': ' . curl_error($curl));
         }
-        $headerSize = curl_getinfo($curl, CURLINFO_HEADER_SIZE);
+        $headerSize   = curl_getinfo($curl, CURLINFO_HEADER_SIZE);
         $responseBody = substr($response, $headerSize);
         $client->setDebug(
             curl_getinfo($curl, CURLINFO_HEADER_OUT),
@@ -100,10 +132,19 @@ class Http {
 
     }
 
-    /*
+    /**
      * Specific case for OAuth. Run /oauth.php via your browser to get an access token
+     *
+     * @param Client $client
+     * @param string $code
+     * @param string $oAuthId
+     * @param string $oAuthSecret
+     *
+     * @throws \Exception
+     *
+     * @return mixed
      */
-    public static function oauth($client, $code, $oAuthId, $oAuthSecret) {
+    public static function oauth(Client $client, $code, $oAuthId, $oAuthSecret) {
 
         $url = 'https://'.$client->getSubdomain().'.zendesk.com/oauth/tokens';
         $method = 'POST';
